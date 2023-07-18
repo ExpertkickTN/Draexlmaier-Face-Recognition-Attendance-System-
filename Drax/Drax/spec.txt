@@ -1,1 +1,0 @@
-datas=[('C:\\Users\\mohamed\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\face_recognition_models','face_recognition_models')],
