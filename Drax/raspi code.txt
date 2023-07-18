@@ -8,21 +8,7 @@ from picamera.array import PiRGBArray
 from picamera import PiCamera
 import yagmail
 
-def send_email(image_path):
-    # Your email credentials
-    email_sender = 'draxlmaierit@gmail.com'
-    email_password = 'sbacgnrfkiodzgjy'
-
-    # Compose the email
-    subject = 'Alert: Unknown Person Detected'
-    contents = 'The code could not recognize the face in the image.'
-    attachments = [image_path]  # Attach the image of the unknown person
-
-    # Send the email
-    yag = yagmail.SMTP(email_sender, email_password)
-    yag.send(to=email_sender, subject=subject, contents=contents, attachments=attachments)
-    yag.close()
-
+# Firebase configuration
 config = {
     "apiKey": "AIzaSyAG_tCDO1bbVTQtRzrKGTbwJLFNbbQzECw",
     "authDomain": "faceattendance-e1faf.firebaseapp.com",
@@ -31,27 +17,34 @@ config = {
     "serviceAccount": "/home/pi/Desktop/Drax/serviceaccountkey.json"
 }
 
+# Email credentials
+email_sender = 'draxlmaierit@gmail.com'
+email_password = 'sbacgnrfkiodzgjy'
+
 # Initialize Firebase
 firebase = pyrebase.initialize_app(config)
-
-# Get a reference to the Firebase Storage service
 storage = firebase.storage()
+db = firebase.database()
 
-# File download function
+# Function to send an email with an image attachment
+def send_email(image_path):
+    subject = 'Alert: Unknown Person Detected'
+    contents = 'The code could not recognize the face in the image.'
+    attachments = [image_path]
+
+    yag = yagmail.SMTP(email_sender, email_password)
+    yag.send(to=email_sender, subject=subject, contents=contents, attachments=attachments)
+    yag.close()
+
+# Download file from Firebase Storage
 def download_file(filename, destination):
     storage.child(filename).download(destination)
 
-# Usage
+# Download the known face encodings file
 download_file("EncodeFile.p", "/home/pi/Desktop/Drax/EncodeFile.p")
 print("Encode File Downloaded")
-db = firebase.database()
 
-# Initialize the PiCamera
-camera = PiCamera()
-camera.resolution = (640, 480)
-camera.framerate = 30
-raw_capture = PiRGBArray(camera, size=(640, 480))
-
+# Load known face encodings
 with open('/home/pi/Desktop/Drax/EncodeFile.p', 'rb') as file:
     encodeListKnownWithIds = pickle.load(file)
 
@@ -59,14 +52,20 @@ encodeListKnown, workerId = encodeListKnownWithIds
 print(workerId)
 print("Encode File Loaded")
 
-counter = 0
-id = -1
-known_face_encodings = []  # Track known face encodings
+# Initialize the PiCamera
+camera = PiCamera()
+camera.resolution = (320, 240)
+camera.framerate = 30
+raw_capture = PiRGBArray(camera, size=(320, 240))
 
-# Allow the camera to warm up
+# Face recognition variables
+known_faces = {}
+known_face_encodings = []
+
 for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
     image = frame.array
 
+    # Resize the image for faster processing
     imgS = cv2.resize(image, (0, 0), None, 0.25, 0.25)
     imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
     faceCurFrame = face_recognition.face_locations(imgS)
@@ -85,33 +84,35 @@ for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port
                 cv2.rectangle(image, (bbox[0], bbox[1]), (bbox[0] + bbox[2], bbox[1] + bbox[3]), (128, 128, 128), 2)
                 id = workerId[matchIndex]
 
-                if counter == 0:
-                    cv2.imshow("Face Attendance", image)
-                    cv2.waitKey(1)
-                    counter = 1
+                # Check if the face ID is already in the known_faces dictionary
+                if id in known_faces:
+                    known_faces[id] += 1
+                    print(workerInfo)
+                else:
+                    known_faces[id] = 1
 
-                if counter <= 10:
+                if known_faces[id] >= 5:
                     workerInfo = db.child("Workers").child(id).get().val()
                     print(workerInfo)
 
-                if workerInfo is not None:
-                    datetimeObject = datetime.strptime(workerInfo['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
-                    secondsElapsed = (datetime.now() - datetimeObject).total_seconds()
+                    if workerInfo is not None:
+                        datetimeObject = datetime.strptime(workerInfo['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
+                        secondsElapsed = (datetime.now() - datetimeObject).total_seconds()
 
-                    if secondsElapsed > 30:
-                        db.child("Workers").child(id).update({
-                            'total_attendance': workerInfo['total_attendance'] + 1,
-                            'last_attendance_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
+                        if secondsElapsed > 30:
+                            db.child("Workers").child(id).update({
+                                'total_attendance': workerInfo['total_attendance'] + 1,
+                                'last_attendance_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            })
 
-                    (w, h), _ = cv2.getTextSize(workerInfo['name'], cv2.FONT_HERSHEY_COMPLEX, 1, 1)
-                    offset = (bbox[2] - w) // 2
-                    cv2.putText(image, str(workerInfo['name']), (bbox[0] + offset, bbox[1] - 20),
-                                cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 0, 0), 1)
-                    cv2.putText(image, str(id), (bbox[0] + offset, bbox[1] + bbox[3] + 20),
-                                cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 1)
+                        (w, h), _ = cv2.getTextSize(workerInfo['name'], cv2.FONT_HERSHEY_COMPLEX, 1, 1)
+                        offset = (bbox[2] - w) // 2
+                        cv2.putText(image, str(workerInfo['name']), (bbox[0] + offset, bbox[1] - 20),
+                                    cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 0, 0), 1)
+                        cv2.putText(image, str(id), (bbox[0] + offset, bbox[1] + bbox[3] + 20),
+                                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 1)
 
-                counter += 1
+                    known_faces[id] = 0
             else:
                 unknown_encoding = encodeFace
                 matches = face_recognition.compare_faces(known_face_encodings, unknown_encoding)
@@ -124,11 +125,10 @@ for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port
                         print(f"Error saving image: {e}")
                 known_face_encodings.append(unknown_encoding)
 
-                if counter >= 20:
-                    counter = 0
-                    workerInfo = []
+                known_faces[id] = 0
+
     else:
-        counter = 0
+        known_faces = {}
 
     cv2.imshow("Face Attendance", image)
     key = cv2.waitKey(1) & 0xFF
@@ -136,7 +136,7 @@ for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port
     # Clear the stream for the next frame
     raw_capture.truncate(0)
 
-    # If the `q` key was pressed, break from the loop
+    # If the 'q' key was pressed, break from the loop
     if key == ord("q"):
         break
 
