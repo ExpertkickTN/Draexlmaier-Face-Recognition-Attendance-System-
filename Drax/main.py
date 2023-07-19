@@ -9,6 +9,7 @@ from firebase_admin import storage
 from datetime import datetime
 import yagmail
 import sys
+import winsound
 
 
 token1 = None
@@ -16,7 +17,11 @@ for i in range(len(sys.argv)):
     if sys.argv[i] == "--token1" and i < len(sys.argv) - 1:
         token1 = sys.argv[i + 1]
         break
-
+def play_sound():
+    # The frequency and duration determine the sound played
+    frequency = 1000  # Frequency in Hz (440 Hz is the musical note A4)
+    duration = 1000  # Duration in milliseconds (1 second)
+    winsound.Beep(frequency, duration)
 def send_email(image_path):
     # Your email credentials
     email_sender = 'draxlmaierit@gmail.com'
@@ -41,8 +46,8 @@ firebase_admin.initialize_app(cred, {
 
 bucket = storage.bucket()
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # if you have a second camera, set the first parameter as 1
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
 
 with open('EncodeFile.p', 'rb') as file:
     encodeListKnownWithIds = pickle.load(file)
@@ -79,27 +84,28 @@ while True:
 
                 if face_detected_count <= 10:
                     workerInfo = db.reference(f'Workers/{id}').get()
-                    print(workerInfo)
 
-                # Check if the same face has been detected 5 or more times
-                if face_detected_count >= 5:
+
+                # Check if the same face has been detected 1 or more times
+                if face_detected_count > 1:
                     if workerInfo is not None:
                         datetimeObject = datetime.strptime(workerInfo['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
-                        secondsElapsed = (datetime.now() - datetimeObject).total_seconds()
-
-                        if secondsElapsed > 30:
+                        (w, h), _ = cv2.getTextSize(workerInfo['name'], cv2.FONT_HERSHEY_COMPLEX, 1, 1)
+                        offset = (bbox[2] - w) // 2
+                        cv2.putText(frame, '[' + str(workerInfo['name'] + ' ' + str(id) + ']'),
+                                    (bbox[0] + offset, bbox[1] - 20),
+                                    cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 0, 0), 1)
+                        if  datetimeObject.date() == datetime.today().date():
+                            print('already checked',workerInfo['name'])
+                        else:
+                            print(workerInfo)
                             ref = db.reference(f'Workers/{id}')
+                            play_sound()
                             workerInfo['total_attendance'] += 1
                             ref.update({
                                 'total_attendance': workerInfo['total_attendance'],
                                 'last_attendance_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             })
-
-                        (w, h), _ = cv2.getTextSize(workerInfo['name'], cv2.FONT_HERSHEY_COMPLEX, 1, 1)
-                        offset = (bbox[2] - w) // 2
-                        cv2.putText(frame, '[' + str(workerInfo['name'] + ' ' + str(id) + ']'), (bbox[0] + offset, bbox[1] - 20),
-                                    cv2.FONT_HERSHEY_COMPLEX, 0.6, (255, 0, 0), 1)
-
                     face_detected_count = 0  # Reset the face_detected_count after updating the attendance
 
             else:
@@ -122,7 +128,7 @@ while True:
 
     def check_interface(token1):
         if token1 is None:
-            return False
+            return True
 
         else:
             return True
