@@ -87,7 +87,7 @@ token = generate_session_token(16)
 
 def loginpage(email):
     AccountSystem.destroy()
-    command = [resource_path("interface.exe"), "--token", token ,"--email", email]
+    command = ['py',resource_path("interface.py"), "--token", token ,"--email", email]
     subprocess.run(command)
 
 def show_frame(frame):
@@ -679,7 +679,7 @@ for_headerText1.place(x=110, y=45)
 # ================ Forgot ACCOUNT HEADER ====================
 forAccount_header = Label(
     bg_imageforgot,
-    text="Forgot your password",
+    text="Forgot Your Password",
     fg="#FFFFFF",
     font=("yu gothic ui Bold", 28 * -1),
     bg="#0097AC"
