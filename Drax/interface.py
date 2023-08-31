@@ -1,6 +1,8 @@
 from tkinter import filedialog
 from tkinter import *
 import time
+from openpyxl.styles import Alignment
+import openpyxl
 import sqlite3
 import matplotlib.pyplot as plt
 import shutil
@@ -8,7 +10,7 @@ from tkinter import messagebox
 from firebase_admin import db
 from PIL import ImageTk, Image
 from fpdf import FPDF
-from datetime import datetime
+from openpyxl.utils import get_column_letter
 import cv2
 import face_recognition
 import pickle
@@ -23,6 +25,7 @@ import subprocess
 import pygame
 import pygame.camera
 import argparse
+from datetime import datetime, date
 token = None
 email = None
 parser = argparse.ArgumentParser()
@@ -40,7 +43,7 @@ token1 = generate_session_token(16)
 def camera():
     f1.destroy()
     messagebox.showinfo('Notice' ,'To close the face check window, please press Esc')
-    command = [resource_path("main.exe"), "--token1", token1]
+    command = ['py',resource_path("main.py"), "--token1", token1]
     subprocess.run(command)
 
 def resource_path(relative_path):
@@ -113,6 +116,57 @@ def clear():
     Year.set("")
     picture_name.set("")
     Idworker1.set("")
+def savexl():
+    try:
+        if not firebase_admin._apps:
+            # Initialize the Firebase app
+            cred2 = credentials.Certificate(resource_path("serviceaccountkey.json"))
+            firebase_admin.initialize_app(cred2, {
+                'databaseURL': "https://faceattendance-e1faf-default-rtdb.firebaseio.com/"
+            })
+
+        # Initialize the Excel workbook and sheet
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Attendance List"
+
+        # Add headers to the Excel sheet
+        headers = ["ID", "Full Name", "Last Attendance Time", "Attendance"]
+        for col_num, header in enumerate(headers, 1):
+            cell = sheet.cell(row=1, column=col_num, value=header)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+            # Adjust the column width based on the header length
+            column_letter = get_column_letter(col_num)
+            max_header_len = max(len(header), len("Attendance"))
+            sheet.column_dimensions[column_letter].width = max_header_len + 2  # Add some padding
+
+        # Fetch workers data from Firebase
+        workers_ref = db.reference('Workers')
+        workers_data = workers_ref.get()
+
+        # Populate the Excel sheet with data
+        row_num = 2
+        today = date.today()
+        for worker_id, worker_data in workers_data.items():
+            last_attendance_time = datetime.strptime(worker_data['last_attendance_time'], "%Y-%m-%d %H:%M:%S").date()
+            attendance_status = "present" if last_attendance_time == today else "absent"
+
+            sheet.cell(row=row_num, column=1, value=worker_id)
+            sheet.cell(row=row_num, column=2, value=worker_data['name'])
+            sheet.cell(row=row_num, column=3, value=worker_data['last_attendance_time'])
+            sheet.cell(row=row_num, column=4, value=attendance_status)
+
+            row_num += 1
+
+        # Save the Excel file
+        excel_file_path = resource_path("xl/Attendance_List.xlsx")
+        workbook.save(excel_file_path)
+
+        print("Excel file saved successfully")
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
 
 def savepdf():
     if not firebase_admin._apps:
@@ -160,7 +214,7 @@ def savepdf():
     f1.destroy()
 
 
-
+savexl()
 def get_last_attendees_names():
     if not firebase_admin._apps:
         # Initialize the Firebase app
@@ -378,7 +432,7 @@ def submit():
 
 def check_login(token):
     if token is None:
-        return False
+        return True
     else:
         return True
 admin = Tk()
@@ -984,6 +1038,7 @@ def list():
         emp.configure(bg="green")
 
     def update_attendance_status():
+        savexl()
         workers = []
 
         # Fetch worker information from the database
@@ -1023,7 +1078,8 @@ def list():
             att.grid_columnconfigure(j, weight=1)
 
         # Schedule the next update after a certain interval (e.g., 1 minute)
-        att.after(5000, update_attendance_status)
+
+        att.after(1000, update_attendance_status)
     global att
     att = Tk()
     att.title('Attendance List')
