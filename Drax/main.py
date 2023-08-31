@@ -87,7 +87,7 @@ while True:
 
 
                 # Check if the same face has been detected 1 or more times
-                if face_detected_count > 1:
+                if face_detected_count >=1:
                     if workerInfo is not None:
                         datetimeObject = datetime.strptime(workerInfo['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
                         (w, h), _ = cv2.getTextSize(workerInfo['name'], cv2.FONT_HERSHEY_COMPLEX, 1, 1)
